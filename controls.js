@@ -2,6 +2,13 @@ class Controls {
     constructor(obj) {
         this.obj = obj;
         this.keysPressed = new Set();
+        // Touch state
+        this.touchActive = false;
+        this.touchStartX = 0;
+        this.touchStartY = 0;
+        this.touchAxisX = 0;
+        this.touchAxisY = 0;
+        this.touchRadius = 60; // px displacement for full input
         this.#eventHandler();
     }
 
@@ -33,12 +40,17 @@ class Controls {
     ])
 
     update(dt) {
-        // Aggregate input axes
+        // Aggregate input axes (touch takes priority over keys)
         let ax = 0, ay = 0;
-        if (this.keysPressed.has('ArrowLeft')) ax -= 1;
-        if (this.keysPressed.has('ArrowRight')) ax += 1;
-        if (this.keysPressed.has('ArrowUp')) ay -= 1;
-        if (this.keysPressed.has('ArrowDown')) ay += 1;
+        if (this.touchActive) {
+            ax = this.touchAxisX;
+            ay = this.touchAxisY;
+        } else {
+            if (this.keysPressed.has('ArrowLeft')) ax -= 1;
+            if (this.keysPressed.has('ArrowRight')) ax += 1;
+            if (this.keysPressed.has('ArrowUp')) ay -= 1;
+            if (this.keysPressed.has('ArrowDown')) ay += 1;
+        }
         // Normalize diagonal
         if (ax !== 0 && ay !== 0) { ax *= Math.SQRT1_2; ay *= Math.SQRT1_2; }
         this.obj.inputAxisX = ax;
@@ -63,5 +75,46 @@ class Controls {
                 this.keysPressed.delete(releasedKey);
             }
         });
+
+        // Touch controls: drag anywhere to steer
+        const canvasEl = document.getElementById('myCanvas');
+        if (!canvasEl) return;
+
+        const getTouch = (ev) => (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]);
+        const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+        canvasEl.addEventListener('touchstart', (ev) => {
+            const t = getTouch(ev);
+            if (!t) return;
+            ev.preventDefault();
+            this.touchActive = true;
+            this.touchStartX = t.clientX;
+            this.touchStartY = t.clientY;
+            this.touchAxisX = 0;
+            this.touchAxisY = 0;
+        }, { passive: false });
+
+        canvasEl.addEventListener('touchmove', (ev) => {
+            if (!this.touchActive) return;
+            const t = getTouch(ev);
+            if (!t) return;
+            ev.preventDefault();
+            const dx = t.clientX - this.touchStartX;
+            const dy = t.clientY - this.touchStartY;
+            const ax = clamp(dx / this.touchRadius, -1, 1);
+            const ay = clamp(dy / this.touchRadius, -1, 1);
+            this.touchAxisX = ax;
+            this.touchAxisY = ay;
+        }, { passive: false });
+
+        const endTouch = (ev) => {
+            if (!this.touchActive) return;
+            ev.preventDefault();
+            this.touchActive = false;
+            this.touchAxisX = 0;
+            this.touchAxisY = 0;
+        };
+        canvasEl.addEventListener('touchend', endTouch, { passive: false });
+        canvasEl.addEventListener('touchcancel', endTouch, { passive: false });
     }
 }

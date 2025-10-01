@@ -5,6 +5,10 @@ body {
     overflow: hidden;
 }
 
+#myCanvas {
+    touch-action: none; /* prevent pinch/scroll interfering with controls */
+}
+
 .menu-overlay {
     position: fixed;
     inset: 0;
