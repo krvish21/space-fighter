@@ -8,7 +8,7 @@ class Controls {
         this.touchStartY = 0;
         this.touchAxisX = 0;
         this.touchAxisY = 0;
-        this.touchRadius = 60; // px displacement for full input
+		this.touchRadius = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ? 50 : 60; // px for full input (tighter on mobile)
 
 		// Pointer state (covers mouse + touch)
 		this.pointerActive = false;

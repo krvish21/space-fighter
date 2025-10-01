@@ -19,7 +19,45 @@ finalSound.volume = 0.9;
 // Menu wiring
 const menuEl = document.getElementById('menu');
 const startBtn = document.getElementById('start-btn');
+const restartOverlay = document.getElementById('restart-overlay');
+const restartBtn = document.getElementById('restart-btn');
 const diffSel = document.getElementById('difficulty');
+// Restart logic (after elements exist)
+if (restartBtn) {
+    restartBtn.addEventListener('click', () => {
+        // reset entities and timers
+        enemies.length = 0;
+        centerHeal = null;
+        comet = null;
+        explosion = null;
+        lastSpawn = 0;
+        lastFrameTs = 0;
+        finalDurationMs = 0;
+        healsConsumed = 0;
+        speedBonusHeals = 0;
+        worldDistance = 0;
+        lastCometHealTrigger = 0;
+        nextCometAt = 0;
+        shakeTimeMs = 0;
+        hurtFlashMs = 0;
+        // reset car
+        car.posX = carConfig.pos.x;
+        car.posY = carConfig.pos.y;
+        car.velocityX = 0;
+        car.velocityY = 0;
+        car.health = car.maxHealth;
+        car.hitCount = 0;
+        car.baseMaxSpeed = (window.CONFIG && window.CONFIG.speed && window.CONFIG.speed.base) || car.baseMaxSpeed || car.maxSpeed;
+        car.maxSpeed = car.baseMaxSpeed;
+        car.speedBoostTimerMs = 0;
+        if (car.spaceMusic) { try { car.spaceMusic.pause(); } catch (e) {} car.spaceMusicPlaying = false; car.spaceMusic.currentTime = 0; }
+
+        gameOver = false;
+        gameStarted = true;
+        gameStartTs = performance.now();
+        if (restartOverlay) restartOverlay.style.display = 'none';
+    });
+}
 
 function applyDifficulty(value) {
     // Adjust spawn rate and maybe asteroid speed in future
@@ -42,6 +80,7 @@ if (startBtn) {
         gameStarted = true;
         gameStartTs = performance.now();
         if (menuEl) menuEl.style.display = 'none';
+        if (restartOverlay) restartOverlay.style.display = 'none';
         // Unlock/prime audio on first user gesture
         [cometSound, explosionSound, zapSound, finalSound].forEach(a => {
             try { a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {}); } catch (e) {}
@@ -230,6 +269,8 @@ function run(ts) {
                     }
                     // Trigger explosion particles
                     startExplosion(car.posX + car.width / 2, car.posY + car.height / 2);
+                    // Show restart button
+                    if (restartOverlay) restartOverlay.style.display = 'flex';
                 }
             } else {
                 // Light enemies heal a bit
@@ -365,7 +406,7 @@ function run(ts) {
         ctx.restore();
     }
 
-    // Game Over overlay with flashing final score
+    // Game Over overlay with flashing final score (centered)
     if (gameOver) {
         const mins = Math.floor(finalDurationMs / 60000);
         const secs = Math.floor((finalDurationMs % 60000) / 1000);
@@ -377,14 +418,31 @@ function run(ts) {
         const flash = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin((nowTs - (gameStartTs + finalDurationMs)) / 200));
 
         ctx.save();
+        // dimmed panel behind text
+        const panelW = Math.min(460, canvas.width - 40);
+        const panelH = 120;
+        const panelX = (canvas.width - panelW) / 2;
+        const panelY = (canvas.height - panelH) / 2 - 20;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 2;
+        ctx.roundRect ? ctx.roundRect(panelX, panelY, panelW, panelH, 12) : ctx.fillRect(panelX, panelY, panelW, panelH);
+        if (!ctx.roundRect) {
+            ctx.strokeRect(panelX, panelY, panelW, panelH);
+        } else {
+            ctx.stroke();
+            ctx.fill();
+        }
+
+        // animated title/subtitle
         ctx.globalAlpha = flash;
         ctx.fillStyle = '#FFFFFF';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.font = 'bold 36px sans-serif';
-        ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 24);
+        ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 28);
         ctx.font = '20px sans-serif';
-        ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 12);
+        ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 4);
         ctx.restore();
     }
 

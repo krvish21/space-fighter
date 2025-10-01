@@ -64,3 +64,25 @@ body {
 .menu-card button:hover {
     background: #43A047;
 }
+
+.restart-overlay {
+    position: fixed;
+    left: 50%;
+    top: calc(50% + 80px); /* place button below centered stats */
+    transform: translateX(-50%);
+    z-index: 20;
+}
+
+.restart-overlay #restart-btn {
+    pointer-events: auto;
+    background: #EF5350;
+    color: #fff;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-weight: 700;
+    box-shadow: 0 8px 20px rgba(239,83,80,0.35);
+}
+.restart-overlay #restart-btn:hover {
+    background: #E53935;
+}
