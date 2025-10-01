@@ -15,6 +15,10 @@ const zapSound = new Audio('zap.mp3');
 zapSound.volume = 0.8;
 const finalSound = new Audio('final.mp3');
 finalSound.volume = 0.9;
+const pickSound = new Audio('pick.mp3');
+pickSound.volume = 0.5;
+const powerupSound = new Audio('power_up.mp3');
+powerupSound.volume = 0.5;
 
 // Menu wiring
 const menuEl = document.getElementById('menu');
@@ -276,6 +280,7 @@ function run(ts) {
                 // Light enemies heal a bit
                 car.health = Math.min(car.maxHealth, car.health + 0.1);
                 car.triggerFeedback('heal');
+                try { pickSound.currentTime = 0; pickSound.play().catch(() => {}); } catch (e) {}
                 healsConsumed += 1;
                 speedBonusHeals += 1;
                 applySpeedScaling();
@@ -325,6 +330,7 @@ function run(ts) {
             healsConsumed += 1;
             speedBonusHeals += 1;
             applySpeedScaling();
+            try { powerupSound.currentTime = 0; powerupSound.play().catch(() => {}); } catch (e) {}
             // Trigger comet on every N heals (moon)
             const everyN2 = (window.CONFIG && window.CONFIG.comet && window.CONFIG.comet.healTriggerEvery) || 5;
             if (!comet && healsConsumed > 0 && healsConsumed % everyN2 === 0 && lastCometHealTrigger !== healsConsumed) {
