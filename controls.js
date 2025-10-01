@@ -9,6 +9,14 @@ class Controls {
         this.touchAxisX = 0;
         this.touchAxisY = 0;
         this.touchRadius = 60; // px displacement for full input
+
+		// Pointer state (covers mouse + touch)
+		this.pointerActive = false;
+		this.pointerId = null;
+		this.pointerStartX = 0;
+		this.pointerStartY = 0;
+		this.pointerAxisX = 0;
+		this.pointerAxisY = 0;
         this.#eventHandler();
     }
 
@@ -40,9 +48,12 @@ class Controls {
     ])
 
     update(dt) {
-        // Aggregate input axes (touch takes priority over keys)
+		// Aggregate input axes (pointer > touch > keys)
         let ax = 0, ay = 0;
-        if (this.touchActive) {
+		if (this.pointerActive) {
+			ax = this.pointerAxisX;
+			ay = this.pointerAxisY;
+		} else if (this.touchActive) {
             ax = this.touchAxisX;
             ay = this.touchAxisY;
         } else {
@@ -76,9 +87,10 @@ class Controls {
             }
         });
 
-        // Touch controls: drag anywhere to steer
+		// Touch + Pointer controls: drag anywhere to steer
         const canvasEl = document.getElementById('myCanvas');
         if (!canvasEl) return;
+		try { canvasEl.style.touchAction = 'none'; } catch (e) {}
 
         const getTouch = (ev) => (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]);
         const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -116,5 +128,39 @@ class Controls {
         };
         canvasEl.addEventListener('touchend', endTouch, { passive: false });
         canvasEl.addEventListener('touchcancel', endTouch, { passive: false });
+
+		// Pointer Events (covers modern mobile + desktop)
+		canvasEl.addEventListener('pointerdown', (ev) => {
+			// Only capture primary pointer
+			if (this.pointerActive) return;
+			this.pointerActive = true;
+			this.pointerId = ev.pointerId;
+			this.pointerStartX = ev.clientX;
+			this.pointerStartY = ev.clientY;
+			this.pointerAxisX = 0;
+			this.pointerAxisY = 0;
+			try { canvasEl.setPointerCapture(ev.pointerId); } catch (e) {}
+			if (ev.cancelable) ev.preventDefault();
+		}, { passive: false });
+
+		canvasEl.addEventListener('pointermove', (ev) => {
+			if (!this.pointerActive || ev.pointerId !== this.pointerId) return;
+			const dx = ev.clientX - this.pointerStartX;
+			const dy = ev.clientY - this.pointerStartY;
+			this.pointerAxisX = clamp(dx / this.touchRadius, -1, 1);
+			this.pointerAxisY = clamp(dy / this.touchRadius, -1, 1);
+			if (ev.cancelable) ev.preventDefault();
+		}, { passive: false });
+
+		const endPointer = (ev) => {
+			if (!this.pointerActive || ev.pointerId !== this.pointerId) return;
+			this.pointerActive = false;
+			this.pointerId = null;
+			this.pointerAxisX = 0;
+			this.pointerAxisY = 0;
+			if (ev.cancelable) ev.preventDefault();
+		};
+		canvasEl.addEventListener('pointerup', endPointer, { passive: false });
+		canvasEl.addEventListener('pointercancel', endPointer, { passive: false });
     }
 }
