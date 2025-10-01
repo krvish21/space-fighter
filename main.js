@@ -1,6 +1,54 @@
 const canvas = new myCanvas();
 canvas.draw();
 
+// Early declarations for values used by menu wiring
+let gameStartTs = 0;
+let gameStarted = false;
+let spawnIntervalMs = (window.CONFIG && window.CONFIG.spawn && window.CONFIG.spawn.intervalMs) || 800; // overridden by difficulty
+
+// SFX
+const cometSound = new Audio('comet.wav');
+cometSound.volume = 0.6;
+const explosionSound = new Audio('explosion.wav');
+explosionSound.volume = 0.7;
+const zapSound = new Audio('zap.mp3');
+zapSound.volume = 0.8;
+const finalSound = new Audio('final.mp3');
+finalSound.volume = 0.9;
+
+// Menu wiring
+const menuEl = document.getElementById('menu');
+const startBtn = document.getElementById('start-btn');
+const diffSel = document.getElementById('difficulty');
+
+function applyDifficulty(value) {
+    // Adjust spawn rate and maybe asteroid speed in future
+    if (value === 'easy') {
+        spawnIntervalMs = 1200;
+    } else if (value === 'hard') {
+        spawnIntervalMs = 500;
+    } else {
+        spawnIntervalMs = 800;
+    }
+}
+
+if (diffSel) {
+    applyDifficulty(diffSel.value);
+    diffSel.addEventListener('change', (e) => applyDifficulty(e.target.value));
+}
+
+if (startBtn) {
+    startBtn.addEventListener('click', () => {
+        gameStarted = true;
+        gameStartTs = performance.now();
+        if (menuEl) menuEl.style.display = 'none';
+        // Unlock/prime audio on first user gesture
+        [cometSound, explosionSound, zapSound, finalSound].forEach(a => {
+            try { a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {}); } catch (e) {}
+        });
+    });
+}
+
 const carConfig = {
     pos: { x: 100, y: 100 },
     size: (window.CONFIG && window.CONFIG.player && window.CONFIG.player.size) || { w: 52, h: 26 },
@@ -20,14 +68,12 @@ const enemies = [];
 let lastSpawn = 0;
 let lastFrameTs = 0;
 const targetDelta = 1000 / 100; // ~100 FPS
-const spawnIntervalMs = (window.CONFIG && window.CONFIG.spawn && window.CONFIG.spawn.intervalMs) || 450; // faster spawns for more action
 
 // Rare center heal orb state
 let centerHeal = null; // instance of CenterHeal or null
 let centerHealCooldownUntil = 0; // ms timestamp when it can spawn again
 
 // Game timing and state
-let gameStartTs = 0;
 let gameOver = false;
 let finalDurationMs = 0;
 let healsConsumed = 0;
@@ -59,7 +105,7 @@ function run(ts) {
 
     canvas.clear();
     // Advance camera based on car movement (parallax follow)
-    if (!gameOver) {
+    if (gameStarted && !gameOver) {
         // Parallax follow: match screen displacement of the ship
         // Ship screen delta uses velocity * dt * 60 in Car.update()
         const dx = car.velocityX * dt * 60;
@@ -73,9 +119,9 @@ function run(ts) {
 
     const ctx = canvas.getContext();
 
-    if (!gameStartTs) gameStartTs = ts || performance.now();
+    if (gameStarted && !gameStartTs) gameStartTs = ts || performance.now();
 
-    if (!gameOver) {
+    if (gameStarted && !gameOver) {
         car.controls.update(dt);
         car.update(dt);
     }
@@ -96,7 +142,7 @@ function run(ts) {
 
     // Spawn enemies
     const nowTs = ts || performance.now();
-    if (!gameOver && (nowTs - lastSpawn > spawnIntervalMs)) {
+    if (gameStarted && !gameOver && (nowTs - lastSpawn > spawnIntervalMs)) {
         const burstMin = (window.CONFIG && window.CONFIG.spawn && window.CONFIG.spawn.burstMin) || 1;
         const burstMax = (window.CONFIG && window.CONFIG.spawn && window.CONFIG.spawn.burstMax) || 3;
         const batch = Math.floor(burstMin + Math.random() * (burstMax - burstMin + 1));
@@ -107,7 +153,7 @@ function run(ts) {
     }
 
     // Spawn rare center heal orb
-    if (!centerHeal && nowTs > centerHealCooldownUntil) {
+    if (gameStarted && !centerHeal && nowTs > centerHealCooldownUntil) {
         const moonChance = (window.CONFIG && window.CONFIG.moon && window.CONFIG.moon.spawnChance) || 0.003;
         if (Math.random() < moonChance) {
             centerHeal = new CenterHeal(canvas.width, canvas.height);
@@ -115,10 +161,11 @@ function run(ts) {
     }
 
     // Spawn a comet every so often (purely visual)
-    if (!comet && nowTs >= nextCometAt) {
+    if (gameStarted && !comet && nowTs >= nextCometAt) {
         const winChance = (window.CONFIG && window.CONFIG.comet && window.CONFIG.comet.windowChance) || 0.01;
         if (Math.random() < winChance) {
             comet = new Comet(canvas.width, canvas.height);
+            try { cometSound.currentTime = 0; cometSound.play().catch(() => {}); } catch (e) {}
         }
         // schedule next window 5–15s later
         if (!comet) {
@@ -159,12 +206,13 @@ function run(ts) {
         if (intersects) {
             // Handle dark/light enemy effects
             if (e.isSpeedBoost) {
-                // Speed boost: temporary increase in max speed
-                car.speedBoostTimer = Math.max(car.speedBoostTimer, 120); // ~1.2s at 100fps
+                // Configurable, size-scaled speed boost
+                car.applySpeedBoost();
                 car.triggerFeedback('heal');
             } else if (e.isDark) {
                 car.hitCount++;
                 car.health = Math.max(0, car.health - 1 / 3);
+                try { zapSound.currentTime = 0; zapSound.play().catch(() => {}); } catch (e) {}
                 car.triggerFeedback('hit');
                 // hit feedback
                 shakeTimeMs = 250;
@@ -173,6 +221,13 @@ function run(ts) {
                     // Game over: record final duration and stop gameplay updates
                     gameOver = true;
                     finalDurationMs = nowTs - gameStartTs;
+                    // Final SFX
+                    try { finalSound.currentTime = 0; finalSound.play().catch(() => {}); } catch (e) {}
+                    // Stop background music
+                    if (car.spaceMusic && car.spaceMusicPlaying) {
+                        try { car.spaceMusic.pause(); } catch (e) {}
+                        car.spaceMusicPlaying = false;
+                    }
                     // Trigger explosion particles
                     startExplosion(car.posX + car.width / 2, car.posY + car.height / 2);
                 }
@@ -248,30 +303,67 @@ function run(ts) {
     // Restore post-shake transform
     ctx.restore();
 
-    // UI / HUD
+    // UI / HUD - Horizontal neon stats
     const pad = 16;
-    const barW = 200;
-    const barH = 10;
-    // Health bar background
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.fillRect(pad, pad, barW, barH);
-    // Health bar foreground
-    ctx.fillStyle = '#4CAF50';
-    ctx.fillRect(pad, pad, barW * Math.max(0, Math.min(1, car.health)), barH);
-    // Text stats
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = '12px sans-serif';
-    ctx.fillText(`Health: ${(car.health * 100).toFixed(0)}%`, pad, pad + barH + 12);
-    ctx.fillText(`Hits: ${car.hitCount}/3`, pad, pad + barH + 26);
-    ctx.fillText(`Heals: ${healsConsumed}`, pad, pad + barH + 40);
     // Survival time (mm:ss)
-    const elapsedMs = gameOver ? finalDurationMs : (nowTs - gameStartTs);
+    const elapsedMs = gameOver ? finalDurationMs : (gameStarted ? (nowTs - gameStartTs) : 0);
     const minsHud = Math.max(0, Math.floor(elapsedMs / 60000));
     const secsHud = Math.max(0, Math.floor((elapsedMs % 60000) / 1000));
-    ctx.fillText(`Time: ${String(minsHud).padStart(2, '0')}:${String(secsHud).padStart(2, '0')}`,
-        pad, pad + barH + 54);
-    // Optional: distance (for future difficulty scaling)
-    // ctx.fillText(`Dist: ${Math.floor(worldDistance)}px`, pad, pad + barH + 68);
+
+    const stats = [
+        `Health: ${(car.health * 100).toFixed(0)}%`,
+        `Hits: ${car.hitCount}/3`,
+        `Heals: ${healsConsumed}`,
+        `Time: ${String(minsHud).padStart(2, '0')}:${String(secsHud).padStart(2, '0')}`
+    ];
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const hudFontSize = (window.CONFIG && window.CONFIG.hud && window.CONFIG.hud.fontSizePx) || 14;
+    const neonColor = (window.CONFIG && window.CONFIG.hud && window.CONFIG.hud.neonColor) || '#00E5FF';
+    ctx.font = `bold ${hudFontSize}px sans-serif`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = neonColor;
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = 'rgba(0,229,255,0.6)';
+    ctx.lineWidth = 2;
+
+    let x = pad;
+    const y = pad;
+    const gap = 24; // px between items
+    for (let i = 0; i < stats.length; i++) {
+        const text = stats[i];
+        ctx.strokeText(text, x, y);
+        ctx.fillText(text, x, y);
+        x += ctx.measureText(text).width + gap;
+    }
+    ctx.restore();
+
+    // Bottom-left health percent in different color with critical change
+    const showBL = (window.CONFIG && window.CONFIG.hud && window.CONFIG.hud.health && window.CONFIG.hud.health.showBottomLeft) !== false;
+    if (showBL) {
+        const critThresh = (window.CONFIG && window.CONFIG.hud && window.CONFIG.hud.health && window.CONFIG.hud.health.criticalThreshold) || 0.25;
+        const normalColor = (window.CONFIG && window.CONFIG.hud && window.CONFIG.hud.health && window.CONFIG.hud.health.normalColor) || '#80FFEA';
+        const criticalColor = (window.CONFIG && window.CONFIG.hud && window.CONFIG.hud.health && window.CONFIG.hud.health.criticalColor) || '#FF5252';
+        const healthText = `${Math.max(0, Math.min(100, Math.round(car.health * 100)))}%`;
+        const color = (car.health <= critThresh) ? criticalColor : normalColor;
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.font = `bold ${hudFontSize}px sans-serif`;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        const padBL = 16;
+        const xBL = padBL;
+        const yBL = canvas.height - padBL;
+        ctx.strokeText(healthText, xBL, yBL);
+        ctx.fillText(healthText, xBL, yBL);
+        ctx.restore();
+    }
 
     // Game Over overlay with flashing final score
     if (gameOver) {
@@ -310,6 +402,7 @@ function run(ts) {
             const collided = lineCircleIntersect(comet.x, comet.y, tx, ty, e.posX, e.posY, (e.radius || 12) + comet.thickness);
             if (collided) {
                 startExplosion(e.posX, e.posY);
+                try { explosionSound.currentTime = 0; explosionSound.play().catch(() => {}); } catch (e) {}
                 // Shockwave: push nearby asteroids (isDark) and show ring
                 applyShockwave(e.posX, e.posY, 200, 8);
                 triggerShockwave(e.posX, e.posY, 220);
@@ -449,7 +542,7 @@ function applySpeedScaling() {
     const newBase = Math.min(cap, base + speedBonusHeals * perHeal);
     car.baseMaxSpeed = newBase;
     // Reflect immediately if not boosting
-    if (car.speedBoostTimer <= 0) car.maxSpeed = newBase;
+    if ((car.speedBoostTimerMs || 0) <= 0) car.maxSpeed = newBase;
 }
 
 // Visual shockwave ring

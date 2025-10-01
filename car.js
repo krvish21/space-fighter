@@ -23,6 +23,12 @@ class Car {
         this.drivingSound.volume = 0.5;
         this.audioPlaying = false;
 
+		// Background space music
+		this.spaceMusic = new Audio('space.mp3');
+		this.spaceMusic.loop = true;
+		this.spaceMusic.volume = 0.4;
+		this.spaceMusicPlaying = false;
+
         // Spaceship render state
         this.thrustPhase = 0;
 
@@ -37,9 +43,9 @@ class Car {
         this.healthDecayPerFrame = 0.0001; // slow drain per frame
 
         // Speed boost
-        this.baseMaxSpeed = this.maxSpeed;
-        this.speedBoostTimer = 0; // frames
-        this.speedBoostAmount = 3; // extra max speed during boost
+		this.baseMaxSpeed = (window.CONFIG && window.CONFIG.speed && window.CONFIG.speed.base) || this.maxSpeed;
+		this.speedBoostTimerMs = 0; // milliseconds remaining
+		this.speedBoostAmount = 0; // computed extra speed during boost
     }
 
     draw(ctx) {
@@ -141,14 +147,7 @@ class Car {
         ctx.fill();
         ctx.restore();
 
-        // Feedback glow overlay when hit/healed
-        if (this.feedbackTimer > 0) {
-            ctx.shadowColor = this.feedbackColor;
-            ctx.shadowBlur = 20;
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = this.feedbackColor;
-            ctx.strokeRect(-this.width / 2 - 4, -this.height / 2 - 4, this.width + 8, this.height + 8);
-        }
+		// Feedback rectangle removed
 
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
@@ -231,28 +230,48 @@ class Car {
             this.feedbackTimer -= 1;
         }
 
-        // Speed boost countdown and effect (time-based)
-        if (this.speedBoostTimer > 0) {
-            this.speedBoostTimer -= dt * 60;
-            this.maxSpeed = this.baseMaxSpeed + this.speedBoostAmount;
-        } else {
-            this.maxSpeed = this.baseMaxSpeed;
-        }
+		// Speed boost countdown and effect (ms-based)
+		if (this.speedBoostTimerMs > 0) {
+			this.speedBoostTimerMs = Math.max(0, this.speedBoostTimerMs - dt * 1000);
+			this.maxSpeed = this.baseMaxSpeed + this.speedBoostAmount;
+		} else {
+			this.maxSpeed = this.baseMaxSpeed;
+		}
 
-        /*const isMoving = Math.abs(this.velocityX) > 0.1 || Math.abs(this.velocityY) > 0.1;
-
-        if (isMoving && !this.audioPlaying) {
-            this.drivingSound.play().catch(e => console.log('Audio play failed:', e));
-            this.audioPlaying = true;
-        } else if (!isMoving && this.audioPlaying) {
-            this.drivingSound.pause();
-            this.audioPlaying = false;
-        }*/
+		const isMoving = Math.abs(this.velocityX) > 0.1 || Math.abs(this.velocityY) > 0.1;
+		if (isMoving && !this.spaceMusicPlaying) {
+			this.spaceMusic.play().then(() => {
+				this.spaceMusicPlaying = true;
+			}).catch(() => { /* ignore autoplay errors */ });
+		} else if (!isMoving && this.spaceMusicPlaying) {
+			this.spaceMusic.pause();
+			this.spaceMusicPlaying = false;
+		}
     }
 
     setControls() {
         this.controls = new Controls(this);
     }
+
+	applySpeedBoost() {
+		const cfg = (window.CONFIG && window.CONFIG.player && window.CONFIG.player.speedBoost) || {};
+		const durationMs = cfg.durationMs != null ? cfg.durationMs : 3500;
+		const factor = cfg.amountFactor != null ? cfg.amountFactor : 0.5;
+		const ref = cfg.sizeReference || { w: 52, h: 26 };
+		const useDiag = cfg.useDiagonal !== false; // default true
+
+		// Scale factor based on size
+		const sizeScale = useDiag
+			? (Math.hypot(this.width, this.height) / Math.hypot(ref.w, ref.h))
+			: ((this.width * this.height) / (ref.w * ref.h));
+
+		// Relative boost amount from base
+		const base = this.baseMaxSpeed || this.maxSpeed;
+		const amount = base * factor * sizeScale;
+
+		this.speedBoostAmount = amount;
+		this.speedBoostTimerMs = Math.max(this.speedBoostTimerMs || 0, durationMs);
+	}
 
     triggerFeedback(type) {
         // type: 'hit' | 'heal'

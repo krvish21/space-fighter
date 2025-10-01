@@ -4,3 +4,59 @@ body {
     margin: 0;
     overflow: hidden;
 }
+
+.menu-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 10;
+}
+
+.menu-card {
+    background: #121212;
+    color: #fff;
+    padding: 24px 28px;
+    border-radius: 12px;
+    width: 280px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.menu-card h1 {
+    margin: 0 0 8px 0;
+    font-size: 22px;
+    text-align: center;
+}
+
+.menu-card label {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.menu-card select {
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #1e1e1e;
+    color: #fff;
+}
+
+.menu-card button {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: none;
+    background: #4CAF50;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.menu-card button:hover {
+    background: #43A047;
+}
